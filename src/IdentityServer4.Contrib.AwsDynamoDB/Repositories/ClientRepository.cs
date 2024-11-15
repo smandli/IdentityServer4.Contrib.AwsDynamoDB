@@ -21,20 +21,18 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
     /// </summary>
     public class ClientRepository : IClientStore
     {
-        private readonly IAmazonDynamoDB client;
-        private readonly DynamoDBContextConfig ddbConfig;
+        private readonly IDynamoDBContext dynamoDbContext;
         private readonly ILogger<ClientRepository> logger;
 
         /// <summary>
         /// Initializes a new instance of the
         /// <see cref="T:IdentityServer4.Contrib.AwsDynamoDB.Repositories.ClientRepository"/> class.
         /// </summary>
-        /// <param name="client">Client.</param>
+        /// <param name="dynamoDbContext">Db context</param>
         /// <param name="logger">Logger.</param>
-        public ClientRepository(IAmazonDynamoDB client, DynamoDBContextConfig ddbConfig, ILogger<ClientRepository> logger)
+        public ClientRepository(IDynamoDBContext dynamoDbContext, ILogger<ClientRepository> logger)
         {
-            this.client = client;
-            this.ddbConfig = ddbConfig;
+            this.dynamoDbContext = dynamoDbContext;
             this.logger = logger;
         }
 
@@ -50,14 +48,11 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
             Client response = null;
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    var batch = context.QueryAsync<ClientDynamoDB>(clientId);
+                var batch = dynamoDbContext.QueryAsync<ClientDynamoDB>(clientId);
 
-                    var dataset = await batch.GetRemainingAsync();
+                var dataset = await batch.GetRemainingAsync();
 
-                    response = dataset?.First().GetClient();
-                }
+                response = dataset?.First().GetClient();
             }
             catch (Exception ex)
             {
@@ -79,10 +74,7 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    await context.SaveAsync(item.GetClientDynamoDB());
-                }
+                await dynamoDbContext.SaveAsync(item.GetClientDynamoDB());
             }
             catch (Exception ex)
             {

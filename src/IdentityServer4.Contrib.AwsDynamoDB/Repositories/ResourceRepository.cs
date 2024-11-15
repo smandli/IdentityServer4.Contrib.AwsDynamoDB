@@ -23,20 +23,16 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
     /// </summary>
     public class ResourceRepository : IResourceStore
     {
-        private readonly IAmazonDynamoDB client;
-        private readonly DynamoDBContextConfig ddbConfig;
+        private readonly IDynamoDBContext dbContext;
         private readonly ILogger<ResourceRepository> logger;
 
         /// <summary>
         /// Initializes a new instance of the
         /// <see cref="T:IdentityServer4.Contrib.AwsDynamoDB.Repositories.ResourceRepository"/> class.
         /// </summary>
-        /// <param name="client">Client.</param>
-        /// <param name="logger">Logger.</param>
-        public ResourceRepository(IAmazonDynamoDB client, DynamoDBContextConfig ddbConfig, ILogger<ResourceRepository> logger)
+        public ResourceRepository(IDynamoDBContext dbContext, ILogger<ResourceRepository> logger)
         {
-            this.client = client;
-            this.ddbConfig = ddbConfig;
+            this.dbContext = dbContext;
             this.logger = logger;
         }
 
@@ -53,11 +49,8 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using(var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    var dataset = await context.QueryAsync<ApiResourceDynamoDB>(name).GetRemainingAsync();
-                    response = dataset?.First()?.GetApiResource();
-                }
+                var dataset = await dbContext.QueryAsync<ApiResourceDynamoDB>(name).GetRemainingAsync();
+                response = dataset?.First()?.GetApiResource();
             }
             catch(Exception ex)
             {
@@ -103,21 +96,18 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
+                foreach (var sn in scopeNames)
                 {
-                    foreach (var sn in scopeNames)
+                    var condition = new ScanCondition(nameof(ApiResourceDynamoDB.ScopeNames), ScanOperator.Contains, sn);
+                    var batch = dbContext.ScanAsync<ApiResourceDynamoDB>(new List<ScanCondition>{condition});
+                    while(!batch.IsDone)
                     {
-                        var condition = new ScanCondition(nameof(ApiResourceDynamoDB.ScopeNames), ScanOperator.Contains, sn);
-                        var batch = context.ScanAsync<ApiResourceDynamoDB>(new List<ScanCondition>{condition});
-                        while(!batch.IsDone)
-                        {
-                            var dataset = await batch.GetNextSetAsync();
-                            if(dataset.Any()){
-                              var resources = dataset.Select (items => items.GetApiResource ())?.Distinct ();
-                                foreach (var i in resources) {
-                                    if (!response.Exists(x => x.Name == i.Name)) { response.Add (i); }
-                                }                            }
-                        }
+                        var dataset = await batch.GetNextSetAsync();
+                        if(dataset.Any()){
+                          var resources = dataset.Select (items => items.GetApiResource ())?.Distinct ();
+                            foreach (var i in resources) {
+                                if (!response.Exists(x => x.Name == i.Name)) { response.Add (i); }
+                            }                            }
                     }
                 }
             }
@@ -168,13 +158,10 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    foreach(var sn in scopeNames){
-                        var dataset = await context.QueryAsync<IdentityResourceDynamoDB>(sn).GetRemainingAsync();   
-                        if(dataset.Any()){
-                            response.AddRange(dataset.Select(item => item.GetIdentityResource()));
-                        }
+                foreach(var sn in scopeNames){
+                    var dataset = await dbContext.QueryAsync<IdentityResourceDynamoDB>(sn).GetRemainingAsync();   
+                    if(dataset.Any()){
+                        response.AddRange(dataset.Select(item => item.GetIdentityResource()));
                     }
                 }
             }
@@ -211,17 +198,14 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
+                var batch = dbContext.ScanAsync<IdentityResourceDynamoDB>(null);
+                while(!batch.IsDone)
                 {
-                    var batch = context.ScanAsync<IdentityResourceDynamoDB>(null);
-                    while(!batch.IsDone)
-                    {
-                        var dataset = await batch.GetNextSetAsync();
+                    var dataset = await batch.GetNextSetAsync();
 
-                        if (dataset.Any())
-                        {
-                            response = dataset.Select(item => item.GetIdentityResource()).ToList();
-                        }
+                    if (dataset.Any())
+                    {
+                        response = dataset.Select(item => item.GetIdentityResource()).ToList();
                     }
                 }
             }
@@ -245,14 +229,10 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
+                var dataset = await dbContext.ScanAsync<ApiResourceDynamoDB>(null).GetRemainingAsync();
+                if (dataset.Any())
                 {
-                    var dataset = await context.ScanAsync<ApiResourceDynamoDB>(null).GetRemainingAsync();
-                    if (dataset.Any())
-                    {
-                        response = dataset.Select(item => item.GetApiResource()).ToList();
-                    }
-
+                    response = dataset.Select(item => item.GetApiResource()).ToList();
                 }
             }
             catch (Exception ex)
@@ -273,10 +253,7 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
         public async Task StoreApiResource(ApiResource item){
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    await context.SaveAsync(item.GetApiResourceDynamoDB());
-                }
+                await dbContext.SaveAsync(item.GetApiResourceDynamoDB());
             }
             catch (Exception ex)
             {
@@ -296,10 +273,7 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
         {
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    await context.SaveAsync(item.GetIdentityResourceDynamoDB());
-                }
+                await dbContext.SaveAsync(item.GetIdentityResourceDynamoDB());
             }
             catch (Exception ex)
             {

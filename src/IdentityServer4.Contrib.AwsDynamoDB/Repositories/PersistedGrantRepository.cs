@@ -23,20 +23,18 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
     /// </summary>
     public class PersistedGrantRepository : IPersistedGrantStore
     {
-        private readonly IAmazonDynamoDB client;
-        private readonly DynamoDBContextConfig ddbConfig;
+        private readonly IDynamoDBContext dynamoDbContext;
         private readonly ILogger<PersistedGrantRepository> logger;
 
         /// <summary>
         /// Initializes a new instance of the
         /// <see cref="T:IdentityServer4.Contrib.AwsDynamoDB.Repositories.PersistedGrantRepository"/> class.
         /// </summary>
-        /// <param name="client">Client.</param>
         /// <param name="logger">Logger.</param>
-        public PersistedGrantRepository(IAmazonDynamoDB client, DynamoDBContextConfig ddbConfig, ILogger<PersistedGrantRepository> logger)
+        /// <param name="dynamoDbContext">DB Context</param>
+        public PersistedGrantRepository(IDynamoDBContext dynamoDbContext, DynamoDBContextConfig ddbConfig, ILogger<PersistedGrantRepository> logger)
         {
-            this.client = client;
-            this.ddbConfig = ddbConfig;
+            this.dynamoDbContext = dynamoDbContext;
             this.logger = logger;
         }
 
@@ -53,12 +51,9 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    var obj = await context.QueryAsync<PersistedGrantDynamoDB>(subjectId).GetRemainingAsync();
+                var obj = await dynamoDbContext.QueryAsync<PersistedGrantDynamoDB>(subjectId).GetRemainingAsync();
 
-                    result = obj.Select(item => item.GetPersistedGrant());
-                }
+                result = obj.Select(item => item.GetPersistedGrant());
             }
             catch (Exception ex)
             {
@@ -82,12 +77,9 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    var data = await context.QueryAsync<PersistedGrantDynamoDB>(key).GetRemainingAsync();
-                    if(data.Any()){
-                        result = data.First().GetPersistedGrant();
-                    }
+                var data = await dynamoDbContext.QueryAsync<PersistedGrantDynamoDB>(key).GetRemainingAsync();
+                if(data.Any()){
+                    result = data.First().GetPersistedGrant();
                 }
             }
             catch (Exception ex)
@@ -124,17 +116,14 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
+                var batch = dynamoDbContext.ScanAsync<PersistedGrantDynamoDB>(conditions);
+                while (!batch.IsDone)
                 {
-                    var batch = context.ScanAsync<PersistedGrantDynamoDB>(conditions);
-                    while (!batch.IsDone)
-                    {
-                        var dataset = await batch.GetNextSetAsync();
+                    var dataset = await batch.GetNextSetAsync();
 
-                        if (dataset.Any())
-                        {
-                            dataset.ForEach(async item => await context.DeleteAsync(item));
-                        }
+                    if (dataset.Any())
+                    {
+                        dataset.ForEach(async item => await dynamoDbContext.DeleteAsync(item));
                     }
                 }
             }
@@ -176,17 +165,14 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
+                var batch = dynamoDbContext.ScanAsync<PersistedGrantDynamoDB>(conditions);
+                while (!batch.IsDone)
                 {
-                    var batch = context.ScanAsync<PersistedGrantDynamoDB>(conditions);
-                    while (!batch.IsDone)
-                    {
-                        var dataset = await batch.GetNextSetAsync();
+                    var dataset = await batch.GetNextSetAsync();
 
-                        if (dataset.Any())
-                        {
-                            dataset.ForEach(async item => await context.DeleteAsync(item));
-                        }
+                    if (dataset.Any())
+                    {
+                        dataset.ForEach(async item => await dynamoDbContext.DeleteAsync(item));
                     }
                 }
             }
@@ -216,18 +202,15 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
 
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    // find object first
-                    var batch = await context.QueryAsync<PersistedGrantDynamoDB>(key).GetRemainingAsync();
+                // find object first
+                var batch = await dynamoDbContext.QueryAsync<PersistedGrantDynamoDB>(key).GetRemainingAsync();
 
-                    if(batch.Any()){
-                        await context.DeleteAsync(batch.First());
-                    }
-                    else{
-                        await Task.FromResult(0);
-                        return;
-                    }
+                if(batch.Any()){
+                    await dynamoDbContext.DeleteAsync(batch.First());
+                }
+                else{
+                    await Task.FromResult(0);
+                    return;
                 }
             }
             catch (Exception ex)
@@ -249,10 +232,7 @@ namespace IdentityServer4.Contrib.AwsDynamoDB.Repositories
         {
             try
             {
-                using (var context = new DynamoDBContext(client, ddbConfig))
-                {
-                    await context.SaveAsync<PersistedGrantDynamoDB>(grant.GetPersistedGrantDynamoDB());
-                }
+                await dynamoDbContext.SaveAsync<PersistedGrantDynamoDB>(grant.GetPersistedGrantDynamoDB());
             }
             catch (Exception ex)
             {
